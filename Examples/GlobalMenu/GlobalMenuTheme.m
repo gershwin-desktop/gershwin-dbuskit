@@ -86,12 +86,48 @@ static Class _menuRegistryClass;
         {
           NSLog(@"[GlobalMenuTheme] ERROR: Failed to create menu registry!");
         }
+      
+      // Listen for Macintosh menu changes
+      [[NSNotificationCenter defaultCenter] 
+        addObserver: self
+           selector: @selector(macintoshMenuDidChange:)
+               name: @"NSMacintoshMenuDidChangeNotification"
+             object: nil];
+      
+      NSLog(@"[GlobalMenuTheme] Registered for NSMacintoshMenuDidChangeNotification");
     }
   else
     {
       NSLog(@"[GlobalMenuTheme] ERROR: Super init failed!");
     }
   return self;
+}
+
+- (void) dealloc
+{
+  [[NSNotificationCenter defaultCenter] removeObserver: self];
+  [super dealloc];
+}
+
+- (void) macintoshMenuDidChange: (NSNotification*)notification
+{
+  NSMenu *menu = [notification object];
+  NSLog(@"[GlobalMenuTheme] Received macintoshMenuDidChange for menu: %@", [menu title]);
+  
+  if (([NSApp mainMenu] == menu) && menuRegistry != nil)
+    {
+      NSWindow *keyWindow = [NSApp keyWindow];
+      NSLog(@"[GlobalMenuTheme] Sending Macintosh menu to DBus for window: %@", keyWindow);
+      if (keyWindow != nil)
+        {
+          [self setMenu: menu forWindow: keyWindow];
+        }
+    }
+  else
+    {
+      NSLog(@"[GlobalMenuTheme] Skipping - not main menu or no registry. Main: %s, Registry: %@", 
+            ([NSApp mainMenu] == menu) ? "YES" : "NO", menuRegistry);
+    }
 }
 
 - (void)setMenu: (NSMenu*)m forWindow: (NSWindow*)w
@@ -127,39 +163,63 @@ static Class _menuRegistryClass;
     }
 }
 
+// Only handle Windows95InterfaceStyle in updateAllWindowsWithMenu
 - (void)updateAllWindowsWithMenu: (NSMenu*)menu
 {
-  NSLog(@"[GlobalMenuTheme] updateAllWindowsWithMenu called with menu: %@", [menu title]);
+  NSInterfaceStyle style = NSInterfaceStyleForKey(@"NSMenuInterfaceStyle", nil);
+  NSLog(@"[GlobalMenuTheme] updateAllWindowsWithMenu called with menu: %@ for style: %d", 
+        [menu title], (int)style);
   
-  // Send to DBus but DON'T call super - this prevents Mac menubar display
-  if (menu != nil && menuRegistry != nil)
+  if (style == NSWindows95InterfaceStyle)
     {
-      NSWindow *keyWindow = [NSApp keyWindow];
-      NSLog(@"[GlobalMenuTheme] Registering with key window: %@", keyWindow);
-      if (keyWindow != nil)
+      // Handle Windows95 style - send to DBus AND do normal in-app embedding
+      if (menu != nil && menuRegistry != nil)
         {
-          [self setMenu: menu forWindow: keyWindow];
+          NSWindow *keyWindow = [NSApp keyWindow];
+          if (keyWindow != nil)
+            {
+              [self setMenu: menu forWindow: keyWindow];
+            }
         }
+      
+      // Also do the normal Windows95 in-app embedding
+      [super updateAllWindowsWithMenu: menu];
     }
-  
-  // IMPORTANT: DON'T call [super updateAllWindowsWithMenu: menu]
-  // This prevents the Mac menubar from being displayed
+  else
+    {
+      // For other styles, just do normal behavior
+      [super updateAllWindowsWithMenu: menu];
+    }
 }
 
-// Override to prevent Mac menubar geometry setup
+// Targeted override - only suppress Mac menu bar when using DBus
 - (NSRect)modifyRect: (NSRect)rect forMenu: (NSMenu*)menu isHorizontal: (BOOL)horizontal
 {
-  NSLog(@"[GlobalMenuTheme] Suppressing menu geometry for: %@", [menu title]);
-  // Return zero rect to prevent menu display
-  return NSZeroRect;
+  NSInterfaceStyle style = NSInterfaceStyleForKey(@"NSMenuInterfaceStyle", nil);
+  
+  if (style == NSMacintoshInterfaceStyle && menuRegistry != nil && ([NSApp mainMenu] == menu))
+    {
+      NSLog(@"[GlobalMenuTheme] Suppressing Mac menu bar geometry for: %@", [menu title]);
+      return NSZeroRect;  // Hide the Mac menu bar since we're using DBus
+    }
+  
+  // For other cases, use default behavior
+  return [super modifyRect: rect forMenu: menu isHorizontal: horizontal];
 }
 
-// Override to always hide menus
+// Targeted override - only hide Mac menu bar when using DBus
 - (BOOL)proposedVisibility: (BOOL)visibility forMenu: (NSMenu*)menu
 {
-  NSLog(@"[GlobalMenuTheme] Suppressing visibility for menu: %@", [menu title]);
-  // Always return NO to hide all menus
-  return NO;
+  NSInterfaceStyle style = NSInterfaceStyleForKey(@"NSMenuInterfaceStyle", nil);
+  
+  if (style == NSMacintoshInterfaceStyle && menuRegistry != nil && ([NSApp mainMenu] == menu))
+    {
+      NSLog(@"[GlobalMenuTheme] Hiding Mac menu bar for: %@", [menu title]);
+      return NO;  // Hide the Mac menu bar since we're using DBus
+    }
+  
+  // For other menus (submenus, popups, etc.), use default behavior
+  return [super proposedVisibility: visibility forMenu: menu];
 }
 
 @end
