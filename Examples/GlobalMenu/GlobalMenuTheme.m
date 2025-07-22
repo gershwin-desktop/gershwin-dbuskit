@@ -130,16 +130,36 @@ static Class _menuRegistryClass;
 - (void)updateAllWindowsWithMenu: (NSMenu*)menu
 {
   NSLog(@"[GlobalMenuTheme] updateAllWindowsWithMenu called with menu: %@", [menu title]);
-  // For Mac style, also try to register with the key window
+  
+  // Send to DBus but DON'T call super - this prevents Mac menubar display
   if (menu != nil && menuRegistry != nil)
     {
       NSWindow *keyWindow = [NSApp keyWindow];
-      NSLog(@"[GlobalMenuTheme] Also registering with key window: %@", keyWindow);
+      NSLog(@"[GlobalMenuTheme] Registering with key window: %@", keyWindow);
       if (keyWindow != nil)
         {
           [self setMenu: menu forWindow: keyWindow];
         }
     }
+  
+  // IMPORTANT: DON'T call [super updateAllWindowsWithMenu: menu]
+  // This prevents the Mac menubar from being displayed
+}
+
+// Override to prevent Mac menubar geometry setup
+- (NSRect)modifyRect: (NSRect)rect forMenu: (NSMenu*)menu isHorizontal: (BOOL)horizontal
+{
+  NSLog(@"[GlobalMenuTheme] Suppressing menu geometry for: %@", [menu title]);
+  // Return zero rect to prevent menu display
+  return NSZeroRect;
+}
+
+// Override to always hide menus
+- (BOOL)proposedVisibility: (BOOL)visibility forMenu: (NSMenu*)menu
+{
+  NSLog(@"[GlobalMenuTheme] Suppressing visibility for menu: %@", [menu title]);
+  // Always return NO to hide all menus
+  return NO;
 }
 
 @end
