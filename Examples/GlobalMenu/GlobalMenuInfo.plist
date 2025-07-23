@@ -4,9 +4,9 @@
   GSThemeAuthors = (
 	"Niels Grewe",
   );
-  GSThemeDetails = "Theme that enables the global Ubuntu app menu";
+  GSThemeDetails = "Theme that enables the global menu with Mac-style interface without reparenting";
   GSThemeDomain = {
-	NSMenuInterfaceStyle = NSWindows95InterfaceStyle;
+	NSMenuInterfaceStyle = NSMacintoshInterfaceStyle;
 	GSSuppressAppIcon = YES;
   };
 }
