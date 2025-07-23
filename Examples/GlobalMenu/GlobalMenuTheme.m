@@ -94,25 +94,7 @@ static Class _menuRegistryClass;
 
 - (void)updateAllWindowsWithMenu: (NSMenu*)menu
 {
-  NSInterfaceStyle style = NSInterfaceStyleForKey(@"NSMenuInterfaceStyle", nil);
-  
-  if (style == NSWindows95InterfaceStyle)
-    {
-      if (menu != nil && menuRegistry != nil)
-        {
-          NSWindow *keyWindow = [NSApp keyWindow];
-          if (keyWindow != nil)
-            {
-              [self setMenu: menu forWindow: keyWindow];
-            }
-        }
-      
-      [super updateAllWindowsWithMenu: menu];
-    }
-  else
-    {
-      [super updateAllWindowsWithMenu: menu];
-    }
+  [super updateAllWindowsWithMenu: menu];
 }
 
 - (NSRect)modifyRect: (NSRect)rect forMenu: (NSMenu*)menu isHorizontal: (BOOL)horizontal
