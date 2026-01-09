@@ -153,9 +153,13 @@
   }
   NS_HANDLER
   {
-    DBusMessage *error = dbus_message_new_error(original,
-      [[localException name] UTF8String],
-      [[localException reason] UTF8String]);
+    const char *ename = [[localException name] UTF8String];
+    const char *ereason = [[localException reason] UTF8String];
+    if (ename == NULL || strlen(ename) == 0)
+      ename = "org.gnustep.Error";
+    if (ereason == NULL)
+      ereason = "An error occurred";
+    DBusMessage *error = dbus_message_new_error(original, ename, ereason);
     // In the case of error, we send the error instead of the message.
     dbus_message_unref(msg);
     msg = error;

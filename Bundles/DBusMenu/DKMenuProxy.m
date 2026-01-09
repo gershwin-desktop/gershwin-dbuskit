@@ -157,7 +157,10 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
 {
   NSString *title = [self title];
   NSUInteger mnemonic = [self mnemonicLocation];
-  if (NSNotFound != mnemonic)
+  NSUInteger titleLength = [title length];
+  
+  // Check if mnemonic is valid and within the title bounds
+  if (NSNotFound != mnemonic && mnemonic < titleLength)
     {
       NSString *first =  [title substringToIndex: mnemonic];
       NSString *second = [title substringFromIndex: mnemonic];
@@ -255,6 +258,23 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
                properties: (NSArray*)properties
                  forProxy: (DKMenuProxy*)proxy
 {
+  // Safety check: Ensure self is actually an NSMenuItem
+  // Use exception handler to catch crashes from corrupt pointers
+  NS_DURING
+    {
+      if (![self isKindOfClass: [NSMenuItem class]])
+        {
+          NSWarnMLog(@"layoutToDepth called on invalid object: %p. Returning nil.", self);
+          NS_VALUERETURN(nil, NSArray*);
+        }
+    }
+  NS_HANDLER
+    {
+      NSWarnMLog(@"layoutToDepth crashed checking self validity: %@. Returning nil.", localException);
+      return nil;
+    }
+  NS_ENDHANDLER
+  
   NSNumber *identifier = DK_INT32([proxy DBusIDForMenuObject: self]);
   NSDictionary *props = DKMenuPropertyDictionaryForDBusProperties(self, properties);
   NSArray *children = nil;
@@ -272,13 +292,35 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
         {
           nextDepth = depth - 1;
         }
-      NSArray *items = [[self submenu] itemArray];
-      NSDebugMLLog(@"DKMenu", @"Generating layout for %@. Emitting %lu child layouts.", 
-        self, [items count]);
-      NSEnumerator *iEnum = [items objectEnumerator];
-      NSMenuItem *item = nil;
-      while (nil != (item = [iEnum nextObject]))
+      
+      // Make a copy of the itemArray to avoid issues if the menu changes
+      NSArray *items = [[[self submenu] itemArray] copy];
+      
+      // Safety check: Ensure items is actually an array
+      if (!items || ![items isKindOfClass: [NSArray class]])
         {
+          NSWarnMLog(@"Invalid itemArray returned from submenu: %@ (class: %@). Using empty array.", 
+                    items, [items class]);
+          items = [[NSArray array] retain];
+        }
+      
+      NSUInteger count = [items count];
+      NSDebugMLLog(@"DKMenu", @"Generating layout for %@. Emitting %lu child layouts.", 
+        self, count);
+      
+      // Use index-based iteration which is safer than enumerators
+      for (NSUInteger i = 0; i < count; i++)
+        {
+          id item = [items objectAtIndex: i];
+          
+          // Validate that item is an NSMenuItem before using it
+          if (!item || ![item isKindOfClass: [NSMenuItem class]])
+            {
+              NSWarnMLog(@"Skipping invalid menu item at index %lu in layout (class: %@, ptr: %p)",
+                        i, [item class], item);
+              continue;
+            }
+          
           NSArray *childLayout = [item layoutToDepth: nextDepth
                                           properties: properties
                                             forProxy: proxy];
@@ -287,6 +329,8 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
               [c addObject: childLayout];
             }
         }
+      
+      [items release];
       children = c;
     }
     NSDebugMLLog(@"DKMenu", @"Identifier %@ Obj-C type: %s", identifier, [identifier objCType]); 
@@ -345,39 +389,79 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
 
 - (void)_mapMenu: (NSMenu*)menu usingIdentifierReference: (int32_t*)identifier
 {
-  NSArray *items = [menu itemArray];
-  NSEnumerator *iEnum = [items objectEnumerator];
-  NSMenuItem *item = nil;
-  while (nil != (item = [iEnum nextObject]))
-    { 
-      int32_t ident = (*identifier)++;
-      if (NULL == NSMapInsertIfAbsent(nativeToDBus, (void*)item, (void*)(intptr_t)ident))
+  if (!menu)
+    {
+      NSWarnMLog(@"_mapMenu called with nil menu");
+      return;
+    }
+    
+  // Make a copy of the itemArray to avoid issues if the menu changes
+  NSArray *items = [[menu itemArray] copy];
+  if (!items)
+    {
+      NSWarnMLog(@"itemArray returned nil for menu: %@", menu);
+      return;
+    }
+  
+  NSUInteger count = [items count];
+  NSDebugMLLog(@"DKMenu", @"_mapMenu processing %lu items from menu: %@", count, [menu title]);
+  
+  // Use index-based iteration which is safer than enumerators
+  for (NSUInteger i = 0; i < count; i++)
+    {
+      id item = [items objectAtIndex: i];
+      
+      // Validate that item is an NSMenuItem before using it
+      if (!item || ![item isKindOfClass: [NSMenuItem class]])
         {
-          NSMapInsert(dBusToNative, (void*)(intptr_t)ident, (void*)item);
+          NSWarnMLog(@"Skipping invalid menu item at index %lu (class: %@, ptr: %p)", 
+                    i, [item class], item);
+          continue;
+        }
+      
+      int32_t ident = (*identifier)++;
+      NSValue *itemKey = [NSValue valueWithPointer: item];
+      NSNumber *identNum = [NSNumber numberWithInt: ident];
+      
+      [lock lock];
+      // Only add if not already present
+      if ([nativeToDBus objectForKey: itemKey] == nil)
+        {
+          [nativeToDBus setObject: identNum forKey: itemKey];
+          [dBusToNative setObject: [NSValue valueWithPointer: item] forKey: identNum];
+          [lock unlock];
           if ([item hasSubmenu])
             {
               [self _mapMenu: [item submenu] usingIdentifierReference: identifier];
             }
         }
+      else
+        {
+          [lock unlock];
+        }
     }
+  
+  [items release];
 }
 
 - (void)_createMapping
 {
-  NSResetMapTable(nativeToDBus);
-  NSResetMapTable(dBusToNative);
+  [lock lock];
+  [nativeToDBus removeAllObjects];
+  [dBusToNative removeAllObjects];
   int32_t identifier = 1; // 0 would be the root
+  [lock unlock];
   [self _mapMenu: representedMenu usingIdentifierReference: &identifier]; 
             
   NSDebugMLLog(@"DKMenu", @"Created mappings for %d menu items", (identifier - 1));
 }
 
-- (NSMapTable*)_nativeToDBusMap
+- (NSMutableDictionary*)_nativeToDBusMap
 {
   return nativeToDBus;
 }
 
-- (NSMapTable*)_DBusToNativeMap
+- (NSMutableDictionary*)_DBusToNativeMap
 {
   return dBusToNative;
 }
@@ -390,8 +474,31 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
 - (int32_t)DBusIDForMenuObject: (NSMenuItem*)item
 {
   int32_t identifier = 0;
+  
+  // Safety check: Ensure item is actually an NSMenuItem
+  // Use exception handler to catch crashes from corrupt pointers
+  NS_DURING
+    {
+      if (!item || ![item isKindOfClass: [NSMenuItem class]])
+        {
+          NSWarnMLog(@"DBusIDForMenuObject called with invalid item: %p. Returning 0.", item);
+          NS_VALUERETURN(0, int32_t);
+        }
+    }
+  NS_HANDLER
+    {
+      NSWarnMLog(@"DBusIDForMenuObject crashed checking item validity: %@ Returning 0.", localException);
+      return 0;
+    }
+  NS_ENDHANDLER
+  
   [lock lock];
-  identifier = (int32_t)(intptr_t)NSMapGet(nativeToDBus, (void*)item);
+  NSValue *itemKey = [NSValue valueWithPointer: item];
+  NSNumber *identNum = [nativeToDBus objectForKey: itemKey];
+  if (identNum)
+    {
+      identifier = [identNum intValue];
+    }
   [lock unlock];
   return identifier;
 }
@@ -400,7 +507,12 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
 {
   NSMenuItem* item = nil;
   [lock lock];
-  item = (id)NSMapGet(dBusToNative, (void*)(intptr_t)identifier);
+  NSNumber *identKey = [NSNumber numberWithInt: identifier];
+  NSValue *itemVal = [dBusToNative objectForKey: identKey];
+  if (itemVal)
+    {
+      item = (id)[itemVal pointerValue];
+    }
   [lock unlock];
   return item;
 }
@@ -447,10 +559,10 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
   if ((self = [super init]) != nil)
   {
     representedMenu = [menu retain];
-    nativeToDBus = NSCreateMapTable(NSNonRetainedObjectMapKeyCallBacks,
-                                    NSIntegerMapValueCallBacks, 24);
-    dBusToNative = NSCreateMapTable(NSIntegerMapKeyCallBacks,
-                                    NSNonRetainedObjectMapValueCallBacks, 24);
+    // Use NSDictionary with NSValue wrappers for safe pointer handling
+    // NSValue wraps the pointer as data, avoiding any isEqual: calls on the actual objects
+    nativeToDBus = [[NSMutableDictionary alloc] initWithCapacity: 24];
+    dBusToNative = [[NSMutableDictionary alloc] initWithCapacity: 24];
     lock = [NSRecursiveLock new];
     [self _createMapping];
   }
@@ -520,11 +632,22 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
             {
               nextDepth = depth - 1;
             }
-          NSArray *items = [representedMenu itemArray];
-          NSEnumerator *iEnum = [items objectEnumerator];
-          NSMenuItem *item = nil;
-          while (nil != (item = [iEnum nextObject]))
+          // Make a copy of the itemArray to avoid issues if the menu changes
+          NSArray *items = [[representedMenu itemArray] copy];
+          if (!items)
             {
+              NSWarnMLog(@"itemArray returned nil for representedMenu");
+              items = [[NSArray array] retain];
+            }
+          NSUInteger count = [items count];
+          for (NSUInteger i = 0; i < count; i++)
+            {
+              id item = [items objectAtIndex: i];
+              if (!item || ![item isKindOfClass: [NSMenuItem class]])
+                {
+                  NSWarnMLog(@"Skipping invalid menu item at index %lu in layoutForParent", i);
+                  continue;
+                }
               NSArray *childLayout = [item layoutToDepth: nextDepth
                                               properties: propertyNames
                                                 forProxy: self];   
@@ -533,6 +656,7 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
                   [c addObject: childLayout];
                 }
             }
+          [items release];
           children = c;
         }
       layout = [DKStructArray arrayWithObjects: identifier, properties, children, nil];
@@ -615,8 +739,8 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
 - (void)dealloc
 {
   [representedMenu release];
-  NSFreeMapTable(nativeToDBus);
-  NSFreeMapTable(dBusToNative);
+  [nativeToDBus release];
+  [dBusToNative release];
   [center release];
   [lock release];
   [super dealloc];

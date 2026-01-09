@@ -23,17 +23,18 @@
    */
 
 #import <Foundation/NSObject.h>
+#import <Foundation/NSDictionary.h>
 #import <AppKit/NSMenu.h>
 #import "DKDBusMenu.h"
 
-@class DKNotificationCenter, NSRecursiveLock, NSMapTable;
+@class DKNotificationCenter, NSRecursiveLock;
 
 @interface DKMenuProxy : NSObject <DKDBusMenu>
 {
   NSMenu *representedMenu;
   NSUInteger revision;
-  NSMapTable *nativeToDBus;
-  NSMapTable *dBusToNative;
+  NSMutableDictionary *nativeToDBus;  // Maps NSValue (pointer) -> NSNumber (dbus id)
+  NSMutableDictionary *dBusToNative;  // Maps NSNumber (dbus id) -> NSValue (pointer)
   NSRecursiveLock *lock;
   DKNotificationCenter *center;
   BOOL exported;
