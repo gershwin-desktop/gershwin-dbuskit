@@ -32,8 +32,8 @@
 {
   NSMenu *representedMenu;
   NSUInteger revision;
-  NSMapTable *nativeToDBus;
-  NSMapTable *dBusToNative;
+  NSMapTable *nativeToDBus;  // Maps NSMenuItem* (pointer identity) -> int32_t (dbus id)
+  NSMapTable *dBusToNative;  // Maps int32_t (dbus id) -> NSMenuItem* (pointer identity)
   NSRecursiveLock *lock;
   DKNotificationCenter *center;
   BOOL exported;
