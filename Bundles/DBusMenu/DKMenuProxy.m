@@ -417,20 +417,23 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
           continue;
         }
       
-      NSValue *itemKey = [NSValue valueWithPointer: item];
-      
       [lock lock];
-      // Only add if not already present
-      if ([nativeToDBus objectForKey: itemKey] == nil)
+      // Only add if not already present (use pointer as key directly)
+      if ([nativeToDBus objectForKey: item] == nil)
         {
           int32_t ident = (*identifier)++;
-          NSNumber *identNum = [NSNumber numberWithInt: ident];
-          [nativeToDBus setObject: identNum forKey: itemKey];
-          [dBusToNative setObject: [NSValue valueWithPointer: item] forKey: identNum];
+          [nativeToDBus setObject: (void*)(intptr_t)ident forKey: item];
+          [dBusToNative setObject: item forKey: (void*)(intptr_t)ident];
+          
+          // Check if item has submenu while still holding the lock
+          BOOL hasSubmenu = [item hasSubmenu];
+          NSMenu *submenu = hasSubmenu ? [item submenu] : nil;
           [lock unlock];
-          if ([item hasSubmenu])
+          
+          // Recursively map submenu outside the lock to avoid deadlock
+          if (hasSubmenu && submenu)
             {
-              [self _mapMenu: [item submenu] usingIdentifierReference: identifier];
+              [self _mapMenu: submenu usingIdentifierReference: identifier];
             }
         }
       else
@@ -454,12 +457,12 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
   NSDebugMLLog(@"DKMenu", @"Created mappings for %d menu items", (identifier - 1));
 }
 
-- (NSMutableDictionary*)_nativeToDBusMap
+- (NSMapTable*)_nativeToDBusMap
 {
   return nativeToDBus;
 }
 
-- (NSMutableDictionary*)_DBusToNativeMap
+- (NSMapTable*)_DBusToNativeMap
 {
   return dBusToNative;
 }
@@ -485,17 +488,16 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
     }
   NS_HANDLER
     {
-      NSWarnMLog(@"DBusIDForMenuObject crashed checking item validity: %@ Returning 0.", localException);
+      NSWarnMLog(@"DBusIDForMenuObject crashed checking item validity: %@. Returning 0.", localException);
       return 0;
     }
   NS_ENDHANDLER
   
   [lock lock];
-  NSValue *itemKey = [NSValue valueWithPointer: item];
-  NSNumber *identNum = [nativeToDBus objectForKey: itemKey];
-  if (identNum)
+  void *value = [nativeToDBus objectForKey: item];
+  if (value != NULL)
     {
-      identifier = [identNum intValue];
+      identifier = (int32_t)(intptr_t)value;
     }
   [lock unlock];
   return identifier;
@@ -505,12 +507,7 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
 {
   NSMenuItem* item = nil;
   [lock lock];
-  NSNumber *identKey = [NSNumber numberWithInt: identifier];
-  NSValue *itemVal = [dBusToNative objectForKey: identKey];
-  if (itemVal)
-    {
-      item = (id)[itemVal pointerValue];
-    }
+  item = [dBusToNative objectForKey: (void*)(intptr_t)identifier];
   [lock unlock];
   return item;
 }
@@ -557,11 +554,14 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
   if ((self = [super init]) != nil)
   {
     representedMenu = [menu retain];
-    // Use NSDictionary with NSValue wrappers for safe pointer handling
-    // NSValue stores the pointer as opaque data, preventing direct messaging of potentially
-    // corrupt/deallocated objects; dictionary lookups only use NSValue's isEqual:/hash methods
-    nativeToDBus = [[NSMutableDictionary alloc] initWithCapacity: 24];
-    dBusToNative = [[NSMutableDictionary alloc] initWithCapacity: 24];
+    // Use NSMapTable with pointer identity semantics to avoid messaging potentially
+    // corrupt/deallocated objects during lookups
+    nativeToDBus = [[NSMapTable alloc] initWithKeyOptions: NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality
+                                             valueOptions: NSPointerFunctionsIntegerPersonality | NSPointerFunctionsOpaqueMemory
+                                                 capacity: 24];
+    dBusToNative = [[NSMapTable alloc] initWithKeyOptions: NSPointerFunctionsIntegerPersonality | NSPointerFunctionsOpaqueMemory
+                                             valueOptions: NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality
+                                                 capacity: 24];
     lock = [NSRecursiveLock new];
     [self _createMapping];
   }
