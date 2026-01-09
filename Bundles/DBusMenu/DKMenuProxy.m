@@ -294,18 +294,14 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
         }
       
       // Make a copy of the itemArray to avoid issues if the menu changes
-      NSArray *items = [[[self submenu] itemArray] copy];
+      NSArray *items = [[[[self submenu] itemArray] copy] autorelease];
       
       // Safety check: Ensure items is actually an array
       if (!items || ![items isKindOfClass: [NSArray class]])
         {
           NSWarnMLog(@"Invalid itemArray returned from submenu: %@ (class: %@). Using empty array.", 
                     items, [items class]);
-          items = [[[NSArray array] retain] autorelease];
-        }
-      else
-        {
-          [items autorelease];
+          items = [NSArray array];
         }
       
       NSUInteger count = [items count];
