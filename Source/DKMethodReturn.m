@@ -157,7 +157,7 @@
     const char *ereason = [[localException reason] UTF8String];
     if (ename == NULL || strlen(ename) == 0)
       ename = "org.gnustep.Error";
-    if (ereason == NULL)
+    if (ereason == NULL || strlen(ereason) == 0)
       ereason = "An error occurred";
     DBusMessage *error = dbus_message_new_error(original, ename, ereason);
     // In the case of error, we send the error instead of the message.

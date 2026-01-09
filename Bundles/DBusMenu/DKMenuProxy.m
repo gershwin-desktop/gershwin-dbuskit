@@ -265,7 +265,7 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
       if (![self isKindOfClass: [NSMenuItem class]])
         {
           NSWarnMLog(@"layoutToDepth called on invalid object: %p. Returning nil.", self);
-          NS_VALUERETURN(nil, NSArray*);
+          return nil;
         }
     }
   NS_HANDLER
@@ -294,14 +294,14 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
         }
       
       // Make a copy of the itemArray to avoid issues if the menu changes
-      NSArray *items = [[[self submenu] itemArray] copy];
+      NSArray *items = [[[[self submenu] itemArray] copy] autorelease];
       
       // Safety check: Ensure items is actually an array
       if (!items || ![items isKindOfClass: [NSArray class]])
         {
           NSWarnMLog(@"Invalid itemArray returned from submenu: %@ (class: %@). Using empty array.", 
                     items, [items class]);
-          items = [[NSArray array] retain];
+          items = [NSArray array];
         }
       
       NSUInteger count = [items count];
@@ -329,8 +329,6 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
               [c addObject: childLayout];
             }
         }
-      
-      [items release];
       children = c;
     }
     NSDebugMLLog(@"DKMenu", @"Identifier %@ Obj-C type: %s", identifier, [identifier objCType]); 
@@ -419,14 +417,14 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
           continue;
         }
       
-      int32_t ident = (*identifier)++;
       NSValue *itemKey = [NSValue valueWithPointer: item];
-      NSNumber *identNum = [NSNumber numberWithInt: ident];
       
       [lock lock];
       // Only add if not already present
       if ([nativeToDBus objectForKey: itemKey] == nil)
         {
+          int32_t ident = (*identifier)++;
+          NSNumber *identNum = [NSNumber numberWithInt: ident];
           [nativeToDBus setObject: identNum forKey: itemKey];
           [dBusToNative setObject: [NSValue valueWithPointer: item] forKey: identNum];
           [lock unlock];
@@ -482,7 +480,7 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
       if (!item || ![item isKindOfClass: [NSMenuItem class]])
         {
           NSWarnMLog(@"DBusIDForMenuObject called with invalid item: %p. Returning 0.", item);
-          NS_VALUERETURN(0, int32_t);
+          return 0;
         }
     }
   NS_HANDLER
@@ -560,7 +558,8 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
   {
     representedMenu = [menu retain];
     // Use NSDictionary with NSValue wrappers for safe pointer handling
-    // NSValue wraps the pointer as data, avoiding any isEqual: calls on the actual objects
+    // NSValue stores the pointer as opaque data, preventing direct messaging of potentially
+    // corrupt/deallocated objects; dictionary lookups only use NSValue's isEqual:/hash methods
     nativeToDBus = [[NSMutableDictionary alloc] initWithCapacity: 24];
     dBusToNative = [[NSMutableDictionary alloc] initWithCapacity: 24];
     lock = [NSRecursiveLock new];
