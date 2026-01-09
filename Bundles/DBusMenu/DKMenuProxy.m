@@ -558,8 +558,8 @@ NSDictionary* DKMenuPropertyDictionaryForDBusProperties(id menuObject, NSArray* 
   {
     representedMenu = [menu retain];
     // Use NSDictionary with NSValue wrappers for safe pointer handling
-    // NSValue stores the pointer as opaque data so we never message the potentially
-    // corrupt/deallocated objects; only NSValue's own isEqual:/hash are used in lookups
+    // NSValue stores the pointer as opaque data, preventing direct messaging of potentially
+    // corrupt/deallocated objects; dictionary lookups only use NSValue's isEqual:/hash methods
     nativeToDBus = [[NSMutableDictionary alloc] initWithCapacity: 24];
     dBusToNative = [[NSMutableDictionary alloc] initWithCapacity: 24];
     lock = [NSRecursiveLock new];
