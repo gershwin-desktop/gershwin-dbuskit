@@ -199,7 +199,7 @@
            interface: (NSString*)interfaceName
               sender: (DKProxy*)sender
          destination: (DKProxy*)destination
-   filtersAndIndices: (NSString*)firstFilter, NSUInteger firstindex, ... DK_METHOD_DEPRECATED;
+   filtersAndIndices: (NSString*)firstFilter, ... DK_METHOD_DEPRECATED;
 
 /**
  * Similar to
@@ -290,7 +290,7 @@
               interface: (NSString*)interfaceName
                  sender: (DKProxy*)sender
             destination: (DKProxy*)destination
-      filtersAndIndices: (NSString*)firstFilter, NSUInteger firstindex, ... DK_METHOD_DEPRECATED;
+      filtersAndIndices: (NSString*)firstFilter, ... DK_METHOD_DEPRECATED;
 
 /**
  * Removes all observation activities matching the arguments specified.

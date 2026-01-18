@@ -291,13 +291,21 @@
   {
     [self addMethod: method];
   }
-  if (NULL != NSMapInsertIfAbsent(selectorToMethodMap, selector, method))
+  DKMethod *existingMethod = NSMapGet(selectorToMethodMap, selector);
+  if (nil != existingMethod)
   {
+    if ((existingMethod == method)
+      || ([[existingMethod name] isEqualToString: [method name]]))
+    {
+      return;
+    }
     NSWarnMLog(@"Overloading selector '%@' for method '%@' in interface '%@' not supported",
       NSStringFromSelector(selector),
       [method name],
       name);
+    return;
   }
+  NSMapInsert(selectorToMethodMap, selector, method);
 }
 
 /** Installs the method with its default selector. */

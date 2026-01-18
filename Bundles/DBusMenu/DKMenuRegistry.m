@@ -37,6 +37,15 @@
 - (void)_setObject: (id)obj atPath: (NSString*)path; 
 @end
 
+@interface DKPort (PrivateStuffDoNotUse)
+- (id)_objectPathNodeAtPath: (NSString*)path;
+- (id)_proxyForObject: (id)obj;
+@end
+
+@interface DKObjectPathNode : NSObject
+- (id)proxy;
+@end
+
 @interface DKProxy (PrivateStuffDoNotUse)
 - (BOOL)_loadIntrospectionFromFile: (NSString*)path;
 @end
