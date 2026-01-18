@@ -137,7 +137,28 @@
     return;
   }
 
-  busProxy = [p _objectPathNodeAtPath: @"/org/gnustep/application/mainMenu"];
+  id node = nil;
+  if ([p respondsToSelector: @selector(_proxyForObject:)])
+  {
+    node = [p _proxyForObject: menuProxy];
+  }
+  if (node == nil)
+  {
+    node = [p _objectPathNodeAtPath: @"/org/gnustep/application/mainMenu"];
+  }
+  if ([node isKindOfClass: [DKProxy class]])
+  {
+    busProxy = [node retain];
+  }
+  else if ([node respondsToSelector: @selector(proxy)])
+  {
+    busProxy = [[node proxy] retain];
+  }
+  else
+  {
+    NSLog(@"[DKMenuRegistry] Object path node did not provide proxy; cannot export menu. node=%@", node);
+    busProxy = nil;
+  }
   [menuProxy setExported: YES];
 
   NSBundle *bundle = [NSBundle bundleForClass: [self class]];
